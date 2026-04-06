@@ -88,14 +88,19 @@ class SourceSuperleapCrm(AbstractSource):
         catalog: ConfiguredAirbyteCatalog,
         state: Optional[MutableMapping[str, Any]] = None,
     ) -> Iterator[AirbyteMessage]:
-        # Build a map of stream name -> catalog json_schema
-        catalog_schemas = {}
+        # During read, create streams directly from the catalog — no /objects/list/ call needed
+        authenticator = TokenAuthenticator(token=config["api_key"])
+        streams = []
         for configured_stream in catalog.streams:
-            catalog_schemas[configured_stream.stream.name] = configured_stream.stream.json_schema
+            stream = SuperleapStream(
+                config=config,
+                authenticator=authenticator,
+                entity_identifier=configured_stream.stream.name,
+            )
+            stream.set_catalog_schema(configured_stream.stream.json_schema)
+            streams.append(stream)
 
-        # Inject catalog schemas into matching streams so they skip the API call
-        for stream in self.streams(config):
-            if stream.name in catalog_schemas:
-                stream.set_catalog_schema(catalog_schemas[stream.name])
+        self._streams_cache = streams
+        logger.info(f"Reading {len(streams)} streams from catalog: {[s.name for s in streams]}")
 
         return super().read(logger, config, catalog, state)
