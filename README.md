@@ -26,7 +26,7 @@ In your Airbyte instance, go to **Settings > Sources > + New Connector** and add
 | Field | Value |
 |---|---|
 | Connector name | `source-superleap-crm` |
-| Docker image | `adityacariappa/source-superleap-crm` |
+| Docker image | `ghcr.io/superleapai/source-superleap-crm` |
 | Docker tag | `0.2.1` |
 | Connector type | Source |
 
