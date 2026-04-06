@@ -26,8 +26,8 @@ connectionSpecification:
       description: >-
         Start date for incremental syncs (ISO 8601 format).
         Only records updated after this date will be synced on the first run.
+        If not provided, all records will be fetched on the first run.
       format: date-time
-      default: "2024-01-01T00:00:00Z"
       order: 2
     replication_lag_minutes:
       type: integer

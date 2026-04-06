@@ -1,5 +1,4 @@
 {
   "api_key": "YOUR_API_KEY_HERE",
-  "base_url": "https://app.superleap.com/",
-  "start_date": "2024-01-01T00:00:00Z"
+  "base_url": "https://app.superleap.com/"
 }
