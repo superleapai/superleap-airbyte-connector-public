@@ -1,7 +1,8 @@
 import logging
-from typing import Any, List, Mapping, Optional, Tuple
+from typing import Any, Iterator, List, Mapping, MutableMapping, Optional, Tuple
 
 import requests as req
+from airbyte_cdk.models import AirbyteMessage, ConfiguredAirbyteCatalog
 from airbyte_cdk.sources import AbstractSource
 from airbyte_cdk.sources.streams import Stream
 from airbyte_cdk.sources.streams.http.requests_native_auth import TokenAuthenticator
@@ -12,6 +13,10 @@ logger = logging.getLogger("airbyte")
 
 
 class SourceSuperleapCrm(AbstractSource):
+
+    def __init__(self):
+        super().__init__()
+        self._streams_cache: Optional[List[Stream]] = None
 
     @staticmethod
     def _base_url(config: Mapping[str, Any]) -> str:
@@ -53,6 +58,9 @@ class SourceSuperleapCrm(AbstractSource):
         return []
 
     def streams(self, config: Mapping[str, Any]) -> List[Stream]:
+        if self._streams_cache is not None:
+            return self._streams_cache
+
         authenticator = TokenAuthenticator(token=config["api_key"])
         entities = self._list_entities(config)
         streams = []
@@ -62,27 +70,32 @@ class SourceSuperleapCrm(AbstractSource):
             if not entity_id:
                 continue
 
-            fields = self._get_entity_fields(config, entity_id)
-
-            # Extract field names, skip any with null/empty field_name
-            field_names = [
-                f["field_name"]
-                for f in fields
-                if f.get("field_name")
-            ]
-
-            if not field_names:
-                logger.warning(f"Skipping entity '{entity_id}': no valid fields found")
-                continue
-
             stream = SuperleapStream(
                 config=config,
                 authenticator=authenticator,
                 entity_identifier=entity_id,
-                field_names=field_names,
-                field_definitions=fields,
             )
             streams.append(stream)
 
         logger.info(f"Discovered {len(streams)} streams: {[s.name for s in streams]}")
+        self._streams_cache = streams
         return streams
+
+    def read(
+        self,
+        logger,
+        config: Mapping[str, Any],
+        catalog: ConfiguredAirbyteCatalog,
+        state: Optional[MutableMapping[str, Any]] = None,
+    ) -> Iterator[AirbyteMessage]:
+        # Build a map of stream name -> catalog json_schema
+        catalog_schemas = {}
+        for configured_stream in catalog.streams:
+            catalog_schemas[configured_stream.stream.name] = configured_stream.stream.json_schema
+
+        # Inject catalog schemas into matching streams so they skip the API call
+        for stream in self.streams(config):
+            if stream.name in catalog_schemas:
+                stream.set_catalog_schema(catalog_schemas[stream.name])
+
+        return super().read(logger, config, catalog, state)

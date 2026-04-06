@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from dateutil.parser import isoparse
 from typing import Any, Iterable, List, Mapping, MutableMapping, Optional
@@ -36,16 +36,49 @@ class SuperleapStream(HttpStream):
         config: Mapping[str, Any],
         authenticator: TokenAuthenticator,
         entity_identifier: str,
-        field_names: List[str],
-        field_definitions: List[dict],
+        field_names: Optional[List[str]] = None,
+        field_definitions: Optional[List[dict]] = None,
         **kwargs,
     ):
         self._config = config
         self._entity_identifier = entity_identifier
         self._field_names = field_names
         self._field_definitions = field_definitions
+        self._fields_loaded = field_definitions is not None
         self._cursor_value: Optional[str] = None
+        self._datetime_fields: Optional[List[str]] = None
+        self._catalog_json_schema: Optional[Mapping[str, Any]] = None
         super().__init__(authenticator=authenticator, **kwargs)
+
+    def set_catalog_schema(self, json_schema: Mapping[str, Any]) -> None:
+        """Derive field names and datetime info from the configured catalog schema."""
+        self._catalog_json_schema = json_schema
+        properties = json_schema.get("properties", {})
+        self._field_names = list(properties.keys())
+        self._datetime_fields = [
+            fname for fname, schema in properties.items()
+            if schema.get("format") == "date-time"
+        ]
+        self._fields_loaded = True
+        logger.info(f"[{self.name}] Using catalog schema ({len(self._field_names)} fields)")
+
+    def _ensure_fields_loaded(self) -> None:
+        """Lazily fetch field definitions from the API on first access."""
+        if self._fields_loaded:
+            return
+        base = self._config.get("base_url", "https://app.superleap.com/").rstrip("/")
+        url = f"{base}/api/v1/airbyte/objects/{self._entity_identifier}"
+        headers = {"Authorization": f"Bearer {self._config['api_key']}"}
+        resp = req.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        fields = []
+        if data.get("success") and data.get("data"):
+            fields = data["data"].get("fields", [])
+        self._field_definitions = fields
+        self._field_names = [f["field_name"] for f in fields if f.get("field_name")]
+        self._fields_loaded = True
+        logger.info(f"[{self.name}] Loaded {len(self._field_names)} fields on demand")
 
     @property
     def name(self) -> str:
@@ -80,7 +113,9 @@ class SuperleapStream(HttpStream):
 
     @property
     def supports_incremental(self) -> bool:
-        # Only support incremental if entity has an updated_at field
+        if self._field_names is not None:
+            return "updated_at" in self._field_names
+        self._ensure_fields_loaded()
         return any(
             f.get("field_name") == "updated_at"
             for f in self._field_definitions
@@ -100,6 +135,10 @@ class SuperleapStream(HttpStream):
     # -- Schema ----------------------------------------------------------------
 
     def get_json_schema(self) -> Mapping[str, Any]:
+        if self._catalog_json_schema is not None:
+            return self._catalog_json_schema
+
+        self._ensure_fields_loaded()
         properties = {}
         for field in self._field_definitions:
             fname = field.get("field_name")
@@ -122,6 +161,7 @@ class SuperleapStream(HttpStream):
         stream_slice: Optional[Mapping[str, Any]] = None,
         next_page_token: Optional[Any] = None,
     ) -> Optional[Mapping[str, Any]]:
+        self._ensure_fields_loaded()
         query: dict = {"fields": self._field_names}
 
         # Build incremental filter
@@ -134,6 +174,10 @@ class SuperleapStream(HttpStream):
         if cursor_ts:
             epoch_ms = self._to_epoch_ms(cursor_ts)
             if epoch_ms:
+                # Subtract grace period to account for replication lag
+                grace_minutes = self._config.get("replication_lag_minutes", 5)
+                grace_ms = grace_minutes * 60 * 1000
+                epoch_ms = max(0, epoch_ms - grace_ms)
                 query["filter"] = {
                     "and": [
                         {
@@ -222,11 +266,17 @@ class SuperleapStream(HttpStream):
         Some destinations fail to parse fractional seconds with fewer than 3 digits
         (e.g. '2026-04-02T15:26:58.25Z' vs '2026-04-02T15:26:58.250Z').
         """
-        for field in self._field_definitions:
-            if field.get("data_type") not in ("DateTime", "Date"):
-                continue
-            fname = field.get("field_name")
-            if not fname or fname not in record or record[fname] is None:
+        # Determine which fields are datetime — from catalog or API field definitions
+        if self._datetime_fields is not None:
+            dt_fields = self._datetime_fields
+        else:
+            dt_fields = [
+                f.get("field_name") for f in (self._field_definitions or [])
+                if f.get("data_type") in ("DateTime", "Date") and f.get("field_name")
+            ]
+
+        for fname in dt_fields:
+            if fname not in record or record[fname] is None:
                 continue
             try:
                 dt = isoparse(str(record[fname]))

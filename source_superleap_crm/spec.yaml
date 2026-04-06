@@ -29,3 +29,16 @@ connectionSpecification:
       format: date-time
       default: "2024-01-01T00:00:00Z"
       order: 2
+    replication_lag_minutes:
+      type: integer
+      title: Replication Lag Grace Period (minutes)
+      description: >-
+        Grace period in minutes to account for replication lag between
+        your primary database and read replica. The incremental cursor
+        is shifted back by this amount to avoid missing records that
+        haven't replicated yet. Duplicate records should be deduplicated by
+        the destination using the primary key.
+      default: 5
+      minimum: 0
+      maximum: 30
+      order: 3
