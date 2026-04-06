@@ -46,6 +46,7 @@ class SuperleapStream(HttpStream):
         self._field_definitions = field_definitions
         self._fields_loaded = field_definitions is not None
         self._cursor_value: Optional[str] = None
+        self._prior_cursor: Optional[str] = None
         now = datetime.utcnow()
         self._sync_start_ts: str = now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
         self._datetime_fields: Optional[List[str]] = None
@@ -166,12 +167,9 @@ class SuperleapStream(HttpStream):
         self._ensure_fields_loaded()
         query: dict = {"fields": self._field_names}
 
-        # Build incremental filter
-        cursor_ts = None
-        if stream_state and self.cursor_field in stream_state:
-            cursor_ts = stream_state[self.cursor_field]
-        elif self._config.get("start_date"):
-            cursor_ts = self._config["start_date"]
+        # Build incremental filter using prior cursor (not stream_state, which
+        # may already reflect _sync_start_ts from the state getter)
+        cursor_ts = self._prior_cursor or self._config.get("start_date")
 
         if cursor_ts:
             epoch_ms = self._to_epoch_ms(cursor_ts)
@@ -243,6 +241,7 @@ class SuperleapStream(HttpStream):
     @state.setter
     def state(self, value: MutableMapping[str, Any]):
         self._cursor_value = value.get(self.cursor_field)
+        self._prior_cursor = self._cursor_value
 
     # -- Helpers ---------------------------------------------------------------
 

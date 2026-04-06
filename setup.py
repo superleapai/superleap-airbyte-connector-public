@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="source_superleap_crm",
-    version="0.3.3",
+    version="0.3.4",
     description="Airbyte source connector for Superleap CRM",
     author="Superleap",
     packages=find_packages(),
