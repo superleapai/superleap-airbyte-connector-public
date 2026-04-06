@@ -2,6 +2,7 @@
 values.yaml
 acceptance-test-config.yml
 BUILDER_UI_WALKTHROUGH.md
+test_catalog.json
 
 # Secrets / credentials
 config.json

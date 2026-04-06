@@ -1,5 +1,7 @@
 import logging
 from datetime import datetime
+
+from dateutil.parser import isoparse
 from typing import Any, Iterable, List, Mapping, MutableMapping, Optional
 
 from airbyte_cdk.sources.streams.http import HttpStream
@@ -181,6 +183,8 @@ class SuperleapStream(HttpStream):
             return
 
         for record in records:
+            self._normalize_datetimes(record)
+
             # Track cursor for state
             record_cursor = record.get(self.cursor_field)
             if record_cursor:
@@ -211,6 +215,24 @@ class SuperleapStream(HttpStream):
         return {self.cursor_field: max(latest_cursor, current_cursor)}
 
     # -- Helpers ---------------------------------------------------------------
+
+    def _normalize_datetimes(self, record: dict) -> None:
+        """Normalize datetime strings to consistent 3-digit millisecond format.
+
+        Some destinations fail to parse fractional seconds with fewer than 3 digits
+        (e.g. '2026-04-02T15:26:58.25Z' vs '2026-04-02T15:26:58.250Z').
+        """
+        for field in self._field_definitions:
+            if field.get("data_type") not in ("DateTime", "Date"):
+                continue
+            fname = field.get("field_name")
+            if not fname or fname not in record or record[fname] is None:
+                continue
+            try:
+                dt = isoparse(str(record[fname]))
+                record[fname] = dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+            except (ValueError, TypeError):
+                pass
 
     @staticmethod
     def _to_epoch_ms(timestamp_str) -> Optional[int]:
