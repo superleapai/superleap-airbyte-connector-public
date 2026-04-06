@@ -1,7 +1,7 @@
 data:
   connectorType: source
   definitionId: "superleap-crm-source"
-  dockerImageTag: "0.3.4"
+  dockerImageTag: "0.3.5"
   dockerRepository: "source-superleap-crm"
   connectorSubtype: api
   releaseStage: alpha
