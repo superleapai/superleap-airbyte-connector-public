@@ -27,10 +27,10 @@ In your Airbyte instance, go to **Settings > Sources > + New Connector** and add
 |---|---|
 | Connector name | `source-superleap-crm` |
 | Docker image | `ghcr.io/superleapai/source-superleap-crm` |
-| Docker tag | `0.2.1` |
+| Docker tag | `0.3.0` |
 | Connector type | Source |
 
-> **Important:** Always pin to a specific version tag (e.g. `0.2.1`). Avoid using `latest` as breaking changes between versions can disrupt your syncs.
+> **Important:** Always pin to a specific version tag (e.g. `0.3.0`). Avoid using `latest` as breaking changes between versions can disrupt your syncs.
 
 ### 2. Configure the source
 
@@ -63,7 +63,7 @@ If you want to build the Docker image yourself:
 ```bash
 git clone https://github.com/superleap-ai/superleap-airbyte-connector-public.git
 cd superleap-airbyte-connector-public
-docker build -t source-superleap-crm:0.2.1 .
+docker build -t source-superleap-crm:0.3.0 .
 ```
 
 Then use your locally built image name when adding the connector to Airbyte.
@@ -79,6 +79,7 @@ Then use your locally built image name when adding the connector to Airbyte.
 
 | Version | Notes |
 |---|---|
+| 0.3.0 | Lazy field loading, catalog schema reuse, replication lag grace period |
 | 0.2.1 | Fix datetime normalization for consistent fractional seconds |
 | 0.2.0 | Public release |
 
