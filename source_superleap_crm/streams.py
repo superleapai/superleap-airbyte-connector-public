@@ -46,6 +46,8 @@ class SuperleapStream(HttpStream):
         self._field_definitions = field_definitions
         self._fields_loaded = field_definitions is not None
         self._cursor_value: Optional[str] = None
+        now = datetime.utcnow()
+        self._sync_start_ts: str = now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
         self._datetime_fields: Optional[List[str]] = None
         self._catalog_json_schema: Optional[Mapping[str, Any]] = None
         super().__init__(authenticator=authenticator, **kwargs)
@@ -228,13 +230,6 @@ class SuperleapStream(HttpStream):
 
         for record in records:
             self._normalize_datetimes(record)
-
-            # Track cursor for state
-            record_cursor = record.get(self.cursor_field)
-            if record_cursor:
-                if self._cursor_value is None or record_cursor > self._cursor_value:
-                    self._cursor_value = record_cursor
-
             yield record
 
     # -- State management (incremental) ----------------------------------------
@@ -254,9 +249,8 @@ class SuperleapStream(HttpStream):
         current_stream_state: MutableMapping[str, Any],
         latest_record: Mapping[str, Any],
     ) -> MutableMapping[str, Any]:
-        latest_cursor = latest_record.get(self.cursor_field, "")
-        current_cursor = current_stream_state.get(self.cursor_field, "")
-        return {self.cursor_field: max(latest_cursor, current_cursor)}
+        self._cursor_value = self._sync_start_ts
+        return {self.cursor_field: self._sync_start_ts}
 
     # -- Helpers ---------------------------------------------------------------
 

@@ -8,6 +8,7 @@ LOCAL_DEV.md
 # Secrets / credentials
 config.json
 config_bad.json
+state.json
 .env
 .env.*
 secrets/
