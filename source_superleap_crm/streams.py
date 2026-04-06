@@ -237,20 +237,12 @@ class SuperleapStream(HttpStream):
     @property
     def state(self) -> MutableMapping[str, Any]:
         if self._cursor_value:
-            return {self.cursor_field: self._cursor_value}
+            return {self.cursor_field: self._sync_start_ts}
         return {}
 
     @state.setter
     def state(self, value: MutableMapping[str, Any]):
         self._cursor_value = value.get(self.cursor_field)
-
-    def get_updated_state(
-        self,
-        current_stream_state: MutableMapping[str, Any],
-        latest_record: Mapping[str, Any],
-    ) -> MutableMapping[str, Any]:
-        self._cursor_value = self._sync_start_ts
-        return {self.cursor_field: self._sync_start_ts}
 
     # -- Helpers ---------------------------------------------------------------
 
