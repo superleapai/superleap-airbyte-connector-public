@@ -45,7 +45,6 @@ class SuperleapStream(HttpStream):
         self._field_names = field_names
         self._field_definitions = field_definitions
         self._fields_loaded = field_definitions is not None
-        self._cursor_value: Optional[str] = None
         self._prior_cursor: Optional[str] = None
         now = datetime.utcnow()
         self._sync_start_ts: str = now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
@@ -234,14 +233,11 @@ class SuperleapStream(HttpStream):
 
     @property
     def state(self) -> MutableMapping[str, Any]:
-        if self._cursor_value:
-            return {self.cursor_field: self._sync_start_ts}
-        return {}
+        return {self.cursor_field: self._sync_start_ts}
 
     @state.setter
     def state(self, value: MutableMapping[str, Any]):
-        self._cursor_value = value.get(self.cursor_field)
-        self._prior_cursor = self._cursor_value
+        self._prior_cursor = value.get(self.cursor_field)
 
     # -- Helpers ---------------------------------------------------------------
 
