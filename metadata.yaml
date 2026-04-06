@@ -1,0 +1,16 @@
+data:
+  connectorType: source
+  definitionId: "superleap-crm-source"
+  dockerImageTag: "0.1.0"
+  dockerRepository: "source-superleap-crm"
+  connectorSubtype: api
+  releaseStage: alpha
+  license: MIT
+  name: "Superleap CRM"
+  documentationUrl: "https://docs.superleap.com/api-reference/airbyte/introduction"
+  icon: "superleap.svg"
+  sourceType: api
+  supportLevel: community
+  tags:
+    - "language:python"
+    - "cdk:python"

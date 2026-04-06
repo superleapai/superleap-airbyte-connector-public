@@ -1,0 +1,223 @@
+version: 6.5.0
+
+type: DeclarativeSource
+
+description: >-
+  Superleap CRM source connector. Syncs all entities (leads, opportunities,
+  companies, users, call logs, etc.) from Superleap using the Airbyte APIs.
+  Supports incremental sync via updated_at cursor and cursor-based pagination.
+
+check:
+  type: CheckStream
+  stream_names: []
+  dynamic_streams_check_configs:
+    - type: DynamicStreamCheckConfig
+      dynamic_stream_name: superleap_entities
+      stream_count: 1
+
+spec:
+  type: Spec
+  documentation_url: https://docs.superleap.com/api-reference/airbyte/introduction
+  connection_specification:
+    $schema: http://json-schema.org/draft-07/schema#
+    type: object
+    required:
+      - api_key
+    additionalProperties: true
+    properties:
+      api_key:
+        type: string
+        title: API Key
+        description: >-
+          Your Superleap API key. Generate one from
+          https://app.superleap.com/settings/apiAccess
+        airbyte_secret: true
+        order: 0
+      base_url:
+        type: string
+        title: Base URL
+        description: Base URL of your Superleap instance.
+        default: "https://app.superleap.com/"
+        order: 1
+      start_date:
+        type: string
+        title: Start Date
+        description: >-
+          Start date for incremental syncs (ISO 8601 format).
+          Only records updated after this date will be synced on the first run.
+        format: date-time
+        default: "2024-01-01T00:00:00Z"
+        order: 2
+
+definitions:
+  base_requester:
+    type: HttpRequester
+    url: >-
+      {{ config.get('base_url', 'https://app.superleap.com/').rstrip('/') }}/api/v1/airbyte/
+    authenticator:
+      type: BearerAuthenticator
+      api_token: "{{ config['api_key'] }}"
+    error_handler:
+      type: DefaultErrorHandler
+      max_retries: 3
+      backoff_strategies:
+        - type: ConstantBackoffStrategy
+          backoff_time_in_seconds: 1
+      response_filters:
+        - type: HttpResponseFilter
+          action: RETRY
+          http_codes:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+        - type: HttpResponseFilter
+          action: FAIL
+          http_codes:
+            - 401
+            - 403
+          error_message: >-
+            Authentication failed. Please check your API key.
+
+dynamic_streams:
+  - type: DynamicDeclarativeStream
+    name: superleap_entities
+
+    stream_template:
+      type: DeclarativeStream
+      name: "{{ components_values['entity_identifier'] }}"
+      primary_key:
+        - id
+
+      retriever:
+        type: SimpleRetriever
+
+        requester:
+          type: HttpRequester
+          url: >-
+            {{ config.get('base_url', 'https://app.superleap.com/').rstrip('/') }}/api/v1/airbyte/objects/{{ components_values['entity_identifier'] }}/records/
+          http_method: POST
+          authenticator:
+            type: BearerAuthenticator
+            api_token: "{{ config['api_key'] }}"
+          request_body_json:
+            query: >-
+              {% if stream_slice.get('start_time') %}
+              {{ {'filter': {'and': [{'field': 'updated_at', 'operator': 'gte', 'value': stream_slice['start_time'] | int}]}} }}
+              {% else %}
+              {{ {} }}
+              {% endif %}
+          error_handler:
+            type: DefaultErrorHandler
+            max_retries: 3
+            backoff_strategies:
+              - type: ConstantBackoffStrategy
+                backoff_time_in_seconds: 1
+            response_filters:
+              - type: HttpResponseFilter
+                action: RETRY
+                http_codes:
+                  - 429
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+              - type: HttpResponseFilter
+                action: FAIL
+                http_codes:
+                  - 401
+                  - 403
+                error_message: >-
+                  Authentication failed. Please check your API key.
+
+        record_selector:
+          type: RecordSelector
+          extractor:
+            type: DpathExtractor
+            field_path:
+              - data
+              - records
+
+        paginator:
+          type: DefaultPaginator
+          pagination_strategy:
+            type: CursorPagination
+            cursor_value: "{{ response.get('data', {}).get('next_token', '') }}"
+            stop_condition: >-
+              {{ not response.get('data', {}).get('next_token') }}
+          page_token_option:
+            type: RequestOption
+            field_path:
+              - next_token
+            inject_into: body_json
+
+      incremental_sync:
+        type: DatetimeBasedCursor
+        cursor_field: updated_at
+        cursor_datetime_formats:
+          - "%Y-%m-%dT%H:%M:%S.%fZ"
+          - "%Y-%m-%dT%H:%M:%SZ"
+        datetime_format: "%ms"
+        start_datetime:
+          type: MinMaxDatetime
+          datetime: "{{ config.get('start_date', '2024-01-01T00:00:00Z') }}"
+          datetime_format: "%Y-%m-%dT%H:%M:%SZ"
+        start_time_option:
+          type: RequestOption
+          inject_into: body_json
+          field_path:
+            - __start_time
+        is_client_side_incremental: false
+
+      schema_loader:
+        type: InlineSchemaLoader
+        schema:
+          type: object
+          additionalProperties: true
+          properties:
+            id:
+              type:
+                - "null"
+                - string
+            updated_at:
+              type:
+                - "null"
+                - string
+              format: date-time
+            created_at:
+              type:
+                - "null"
+                - string
+              format: date-time
+
+    components_resolver:
+      type: HttpComponentsResolver
+      retriever:
+        type: SimpleRetriever
+        requester:
+          type: HttpRequester
+          url: >-
+            {{ config.get('base_url', 'https://app.superleap.com/').rstrip('/') }}/api/v1/airbyte/objects/list/
+          http_method: POST
+          authenticator:
+            type: BearerAuthenticator
+            api_token: "{{ config['api_key'] }}"
+        record_selector:
+          type: RecordSelector
+          extractor:
+            type: DpathExtractor
+            field_path:
+              - data
+      components_mapping:
+        - type: ComponentMappingDefinition
+          field_path:
+            - name
+          value: "{{ components_values['entity_identifier'] }}"
+        - type: ComponentMappingDefinition
+          field_path:
+            - retriever
+            - requester
+            - url
+          value: >-
+            {{ config.get('base_url', 'https://app.superleap.com/').rstrip('/') }}/api/v1/airbyte/objects/{{ components_values['entity_identifier'] }}/records/

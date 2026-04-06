@@ -1,0 +1,30 @@
+# Internal / not needed by connector users
+values.yaml
+acceptance-test-config.yml
+BUILDER_UI_WALKTHROUGH.md
+
+# Secrets / credentials
+config.json
+config_bad.json
+.env
+.env.*
+secrets/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
